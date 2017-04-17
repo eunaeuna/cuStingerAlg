@@ -26,10 +26,9 @@ public:
 	prType threshhold;
 	prType damp;
 	prType normalizedDamp;
-#if 0 //queue	
-	vertexQueue queueSrc;
-	vertexQueue queueDst;
-#else //array
+#if 1 //queue	
+	vertexQueue queue;
+//#else //array
 	vertexId_t* vArraySrc;
 	vertexId_t* vArrayDst;
 #endif
@@ -138,22 +137,7 @@ static __device__ void sumPr(cuStinger* custing,vertexId_t src, void* metadata){
 //update
 #define PR_UPDATE 1
 #if PR_UPDATE 
-/*
-static __device__ void recomputeContribution(cuStinger* custing, vertexId_t src, vertexId_t dst, void* metadata){
-        pageRankUpdate* pr = (pageRankUpdate*)metadata;
-        length_t sizeSrc = custing->dVD->getUsed()[src];
-        prType updateDiff = pr->damp*(pr->prevPR[src]/(sizeSrc+1));
-        updateDiff = updateDiff - (pr->damp*(((float)(pr->prevPR[src])/sizeSrc)*(1/(sizeSrc+1))));
-        atomicAdd(pr->currPR+src,pr->contri[dst]);
-}
-static __device__ void updateContributionsUndirected(cuStinger* custing, vertexId_t src, vertexId_t dst, void* metadata){
-	streaming_page_rank   pageRankUpdate* pr = (pageRankUpdate*)metadata;
-        length_t sizeSrc = custing->dVD->getUsed()[src];
-        prType updateDiff = pr->damp*(pr->prevPR[src]/(sizeSrc+1));
-        updateDiff = updateDiffhostDst,devSrc,elements*eleSize,cudaMemcpyDeviceToHost) - (pr->damp*(((float)(pr->prevPR[src])/sizeSrc)*(1/(sizeSrc+1))));
-        atomicAdd(pr->currPR+src,pr->contri[dst]);
-}
-*/
+/* backup
 static __device__ void recomputeContributionUndirected(cuStinger* custing, vertexId_t src, vertexId_t dst, void* metadata){
         pageRankUpdate* pr = (pageRankUpdate*)metadata;
 //src
@@ -184,6 +168,37 @@ static __device__ void updateContributionsUndirected(cuStinger* custing, vertexI
         //pr->currPR[dst] = pr->prevPR[dst] + updateDiff;
         pr->prevPR[dst] = pr->currPR[dst];
 #endif
+} end of backup*/
+
+static __device__ void recomputeContributionUndirected(cuStinger* custing, vertexId_t src, vertexId_t dst, void* metadata){
+        pageRankUpdate* pr = (pageRankUpdate*)metadata;
+//src
+        length_t sizeDst = custing->dVD->getUsed()[dst];
+        prType updateDiff = pr->damp*(pr->prevPR[dst]/(sizeDst+1));
+        printf("\n---damp=%f, (prevPR[%d:dst]:%f)/(n:%d)",pr->damp,dst,(pr->prevPR[dst]),sizeDst+1);
+        printf("\n---------------(pr->prevPR[%d]:%f)+=(updateDiff=%f)",src,pr->prevPR[src],updateDiff);
+        //updateDiff += pr->prevPR[src]; //new = old + pr_ver_in_new_edge
+        //atomicAdd(pr->currPR+src,updateDiff);
+        printf("\n!!----------------------------------(pr->prevPR[%d]=%f), (pr->currPR[%d]=%f)",src,pr->prevPR[src],src,pr->currPR[src]);
+        pr->currPR[src] = pr->prevPR[src] + updateDiff;
+        //pr->prevPR[src]=pr->currPR[src]; //preserve old pr values for propagation
+        printf("\n!!----------------------------------(pr->prevPR[%d]=%f), (pr->currPR[%d]=%f)",src,pr->prevPR[src],src,pr->currPR[src]);
+}
+
+static __device__ void updateContributionsUndirected(cuStinger* custing, vertexId_t src, vertexId_t dst, void* metadata){
+	    pageRankUpdate* pr = (pageRankUpdate*)metadata;
+        length_t sizeSrc = custing->dVD->getUsed()[src];
+
+        printf("\n ++pr->prevPR[%d]:%f,pr->currPR[%d]:%f,sizeSrc+1:%d",src,pr->prevPR[src],src,pr->currPR[src],sizeSrc+1);
+        
+        prType updateDiff = pr->damp*((pr->currPR[src]/(sizeSrc+1))-(pr->prevPR[src]/sizeSrc));// = pr->damp*((pr->prevPR[dst]/(sizeSrc*sizeDst)) - (pr->prevPR[src]/(sizeSrc*(sizeSrc-1))));
+        updateDiff += pr->prevPR[dst];
+
+        printf("\n ++(propagation:[%d])---------------(pr->prevPR[%d]:%f)+=(updateDiff=%f),size:%d",src,dst,pr->prevPR[dst],updateDiff,sizeSrc+1);
+        atomicAdd(pr->currPR+dst,updateDiff);
+        //pr->currPR[dst] = pr->prevPR[dst] + updateDiff;
+        //pr->prevPR[dst] = pr->currPR[dst]; //do not update prev pr value
+        pr->queue.enqueue(dst);
 }
 #endif
 

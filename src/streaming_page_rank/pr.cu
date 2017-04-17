@@ -43,9 +43,8 @@ void StreamingPageRank::Init(cuStinger& custing){
 
 	devicePRData = (pageRankUpdate*)allocDeviceArray(1, sizeof(pageRankUpdate));
 
-#if 0 //queue
-	hostPRData.queueSrc.Init(custing.nv);
-	hostPRData.queueDst.Init(custing.nv);
+#if 1 //queue
+	hostPRData.queue.Init(custing.nv);
 #else
     //allocate memory for array in UpdateDiff	
 #endif	
@@ -60,9 +59,8 @@ void StreamingPageRank::Init(cuStinger& custing){
 
 void StreamingPageRank::Reset(){
 	hostPRData.iteration = 0;
-#if 0 //queue	
-	hostPRData.queueSrc.resetQueue();
-	hostPRData.queueDst.resetQueue();
+#if 1 //queue	
+	hostPRData.queue.resetQueue();
 #else
 	//array
 #endif	
@@ -236,19 +234,31 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
         hostPRData.iteration = 0;
         prType h_out = hostPRData.threshhold+1;
 
+        printf("\n--------------- recommpute-----------");
+        allVinA_TraverseOneEdge<StreamingPageRankOperator::recomputeContributionUndirected>(custing,devicePRData,hostPRData.vArraySrc,hostPRData.vArrayDst,batchsize);
+#if 0
+        printf("\n--------------- update contri---------------");
+        allVinA_TraverseEdges_LB<StreamingPageRankOperator::updateContributionsUndirected>(custing,devicePRData,*cusLB,hostPRData.vArraySrc,batchsize);
+#else
+        hostPRData.queue.enqueueFromHost(hostPRData.vArraySrc[0]);
+        hostPRData.queue.enqueueFromHost(hostPRData.vArrayDst[1]);
+        printf("\n--------------- update contri by queue---------------");
+  
+        length_t prevEnd=1;
+        while((hostPRData.queue.getActiveQueueSize())>0){
+            allVinA_TraverseEdges_LB<StreamingPageRankOperator::updateContributionsUndirected>(custing,devicePRData,*cusLB,hostPRData.queue,batchsize);
+
+            SyncHostWithDevice();
+            hostPRData.queue.setQueueCurr(prevEnd);
+    		prevEnd = hostPRData.queue.getQueueEnd();
+    		SyncDeviceWithHost();
+        }
+#endif
 //        while(hostPRData.iteration < hostPRData.iterationMax && h_out>hostPRData.threshhold){
 //                SyncDeviceWithHost();
 //                printf("\n--------------- reset curr---------------");
 //                allVinA_TraverseVertices<StreamingPageRankOperator::resetCurr>(custing,devicePRData,*cusLB);
-                printf("\n--------------- recommpute-----------");
-#if 0 //queue                
-                allVinA_TraverseOneEdge<StreamingPageRankOperator::recomputeContributionUndirected>(custing,devicePRData,hostPRData.queueSrc,hostPRData.queueDst);
-#else
-                allVinA_TraverseOneEdge<StreamingPageRankOperator::recomputeContributionUndirected>(custing,devicePRData,hostPRData.vArraySrc,hostPRData.vArrayDst,batchsize);
-#endif
-                printf("\n--------------- update contri---------------");
-                allVinA_TraverseEdges_LB<StreamingPageRankOperator::updateContributionsUndirected>(custing,devicePRData,*cusLB,hostPRData.vArraySrc,batchsize);
-                  
+              
         //      allVinA_TraverseVertices<StreamingPageRankOperator::computeContribuitionPerVertex>(custing,devicePRData,cusLB);
         //      allVinA_TraverseEdges_LB<StreamingPageRankOperator::addContribuitionsUndirected>(custing,devicePRData,cusLB);
         //      allVinA_TraverseEdges_LB<StaticPageRankOperator::addContribuitions>(custing,devicePRData,cusLB);

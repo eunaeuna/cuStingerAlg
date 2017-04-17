@@ -114,6 +114,81 @@ static void allVinA_TraverseVertices(cuStinger& custing,void* metadata,vertexId_
 	device_allVinA_TraverseVertices<cusSK><<<numBlocks, threadsPerBlock>>>(custing.devicePtr(),metadata,verticesPerThreadBlock,verArray,len);
 }
 
+#define PR_UPDATE 1
+
+#if PR_UPDATE //array
+template <cusSubKernelEdge cusSK>
+static __global__ void device_allVinA_TraverseOneEdge(cuStinger* custing,void* metadata, int32_t verticesPerThreadBlock,vertexId_t* verSrcArray, vertexId_t* verDstArray, length_t len){
+	vertexId_t v_init=blockIdx.x*verticesPerThreadBlock+threadIdx.x;
+
+//	printf("---------------------------------------\n");
+//	printf("\n 44444444444444444444444444");
+	for (vertexId_t v_hat=0; v_hat<verticesPerThreadBlock; v_hat+=blockDim.x){
+		vertexId_t v=v_init+v_hat;
+		if(v>=len){
+//			printf("\n 55555555555555555555555555");
+			break;
+		}
+//		printf("verSrcArray[%d]=%d, verDstArray[%d]=%d\n",v,verSrcArray[v],v,verDstArray[v]);
+		vertexId_t src = verSrcArray[v];
+		vertexId_t dst = verDstArray[v];
+		(cusSK)(custing,src,dst,metadata);
+	}
+}
+
+template <cusSubKernelEdge cusSK>
+static void allVinA_TraverseOneEdge(cuStinger& custing,void* metadata,vertexId_t* verSrcArray, vertexId_t* verDstArray, length_t len ){
+//	printf("\n 1111111111111111111111111111");
+	dim3 numBlocks(1, 1); int32_t threads=32;
+	dim3 threadsPerBlock(threads, 1);
+	int32_t verticesPerThreadBlock=512;
+//	printf("\n 222222222222222222222222222");
+	numBlocks.x = ceil((float)len/(float)verticesPerThreadBlock);
+//	printf("\n 33333333333333333333333333");
+	device_allVinA_TraverseOneEdge<cusSK><<<numBlocks, threadsPerBlock>>>(custing.devicePtr(),metadata,verticesPerThreadBlock,verSrcArray,verDstArray,len);
+}
+#endif
+
+/*#if 0//PR_UPDATE //queue
+template <cusSubKernelEdge cusSK>
+static __global__ void device_allVinA_TraverseOneEdge(cuStinger* custing,void* metadata, int32_t verticesPerThreadBlock, vertexQueue& vQueueSrc,vertexQueue& vQueueDst, length_t len){
+	vertexId_t v_init=blockIdx.x*verticesPerThreadBlock+threadIdx.x;
+	printf("\n 44444444444444444444444444");
+	for (vertexId_t v_hat=0; v_hat<verticesPerThreadBlock; v_hat+=blockDim.x){
+		vertexId_t v=v_init+v_hat;
+		if(v>=len){
+			printf("\n 55555555555555555555555555");
+			break;
+		}
+		printf("\n--------------- verSrcArray[%d]:%d---------------",v,vQueueSrc[v]);
+		vertexId_t src = vQueueSrc[v];
+		vertexId_t dst = vQueueDst[v];
+		(cusSK)(custing,src,dst,metadata);
+	}
+}
+
+template <cusSubKernelEdge cusSK>
+static void allVinA_TraverseOneEdge(cuStinger& custing,void* metadata,vertexQueue& vQueueSrc,vertexQueue& vQueueDst,length_t len){
+	printf("\n 1111111111111111111111111111");
+	dim3 numBlocks(1, 1); int32_t threads=32;
+	dim3 threadsPerBlock(threads, 1);
+	int32_t verticesPerThreadBlock=512;
+	printf("\n 222222222222222222222222222");
+	numBlocks.x = ceil((float)len/(float)verticesPerThreadBlock);
+	printf("\n 33333333333333333333333333");
+	
+    cusLB.currArray=vQueueSrc.getQueueAtCurr();
+    //fix!@@
+    vertexId_t currArrayDst=vQueueDst.getQueueAtCurr();
+    cusLB.currArrayLen=vQueueSrc.getActiveQueueSize();
+
+    if(cusLB.currArrayLen==0)
+            return;
+    
+	device_allVinA_TraverseOneEdge<cusSK><<<numBlocks, threadsPerBlock>>>(custing.devicePtr(),metadata,verticesPerThreadBlock,cusLB.currArray,currArrayDst,len);
+}
+#endif*/
+
 template <cusSubKernelVertex cusSK>
 static void allVinA_TraverseVertices(cuStinger& custing,void* metadata,cusLoadBalance& cusLB){
 	dim3 numBlocks(1, 1); int32_t threads=32;
@@ -123,10 +198,6 @@ static void allVinA_TraverseVertices(cuStinger& custing,void* metadata,cusLoadBa
 	numBlocks.x = ceil((float)cusLB.currArrayLen/(float)verticesPerThreadBlock);
 	device_allVinA_TraverseVertices<cusSK><<<numBlocks, threadsPerBlock>>>(custing.devicePtr(),metadata,verticesPerThreadBlock,cusLB.currArray,cusLB.currArrayLen);
 }
-
-
-
-
 
 template <cusSubKernelEdge cusSK>
 static __global__ void device_allVinA_TraverseEdges(cuStinger* custing,void* metadata, int32_t verticesPerThreadBlock,vertexId_t* verArray, length_t len){
@@ -301,6 +372,26 @@ static void allVinA_TraverseEdges_LB(cuStinger& custing,void* metadata, cusLoadB
 		device_allVerticesInArray_LoadBalanaced<cusSK><<<cusLB.foundNumPartition,32>>>(custing.devicePtr(),metadata,cusLB.devPartitionsPoints,cusLB.foundNumPartition,cusLB.currArray,cusLB.currArrayLen);
 }
 
+#if 1//PR_UPDATE
+template <cusSubKernelEdge cusSK>
+static void allVinA_TraverseEdges_LB(cuStinger& custing,void* metadata, cusLoadBalance& cusLB, vertexId_t *verArray, length_t len, bool needLoadBalance=true){
+#if 0 //queue
+	    //cusLB.currArray=vQueue.getQueueAtCurr();
+		//cusLB.currArrayLen=vQueue.getActiveQueueSize();
+		//if(cusLB.currArrayLen==0)
+#endif
+		cusLB.currArray=verArray;
+		cusLB.currArrayLen=len;
+		
+		if(cusLB.currArrayLen==0)
+			return;
+		if(needLoadBalance){
+			cusLB.LoadBalanceArray(custing);
+		}
+		device_allVerticesInArray_LoadBalanaced<cusSK><<<cusLB.foundNumPartition,32>>>(custing.devicePtr(),metadata,cusLB.devPartitionsPoints,cusLB.foundNumPartition,cusLB.currArray,cusLB.currArrayLen);
+}
+#endif
+
 template <cusSubKernelEdge cusSK>
 static void allVinA_TraverseEdges_LB(cuStinger& custing,void* metadata, cusLoadBalance& cusLB){
 		if(cusLB.currArrayLen==0)
@@ -308,8 +399,6 @@ static void allVinA_TraverseEdges_LB(cuStinger& custing,void* metadata, cusLoadB
 
 		device_allVerticesInArray_LoadBalanaced<cusSK><<<cusLB.foundNumPartition,32>>>(custing.devicePtr(),metadata,cusLB.devPartitionsPoints,cusLB.foundNumPartition,cusLB.currArray,cusLB.currArrayLen);
 }
-
-
 
 
 }
