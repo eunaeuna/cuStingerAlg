@@ -203,12 +203,6 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
         vertexId_t *edgeSrc = bud.getSrc();
         vertexId_t *edgeDst = bud.getDst();
 
-#if 0 //queue
-        for(length_t i=0; i<batchsize; i++) {
-        	hostPRData.queueSrc.enqueueFromHost(edgeSrc);
-		    hostPRData.queueDst.enqueueFromHost(edgeDst);
-        }
-#else
         //array test
 //	    hostPRData.vArraySrc = (vertexId_t*)allocHostArray(hostPRData.nv, sizeof(vertexId_t));
 //	    hostPRData.vArrayDst = (vertexId_t*)allocHostArray(hostPRData.nv, sizeof(vertexId_t));
@@ -228,32 +222,98 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
         printf("\n");
         for(length_t i=0; i<batchsize; i++) {
          	printf("edgeSrc[%d]=%d, edgeDst[%d]=%d\n",i,edgeSrc[i],i,edgeDst[i]);
+         	//printf("vArraySrc[%d]=%d, vArrayDst[%d]=%d\n",i,hostPRData.vArraySrc[i],i,hostPRData.vArrayDst[i]);
          }
 #endif
-#endif
+        
         hostPRData.iteration = 0;
         prType h_out = hostPRData.threshhold+1;
 
-        printf("\n--------------- recommpute-----------");
-        allVinA_TraverseOneEdge<StreamingPageRankOperator::recomputeContributionUndirected>(custing,devicePRData,hostPRData.vArraySrc,hostPRData.vArrayDst,batchsize);
-#if 0
-        printf("\n--------------- update contri---------------");
-        allVinA_TraverseEdges_LB<StreamingPageRankOperator::updateContributionsUndirected>(custing,devicePRData,*cusLB,hostPRData.vArraySrc,batchsize);
+        printf("\n--------------- recommpute-----------");       
+        allVinA_TraverseOneEdge<StreamingPageRankOperator::recomputeContributionUndirected>(custing,devicePRData,
+        		hostPRData.vArraySrc,hostPRData.vArrayDst,batchsize);
+        printf("\n--------------- update contri---------------\n");
+       
+#if 0 //array
+        allVinA_TraverseEdges_LB<StreamingPageRankOperator::updateContributionsUndirected>(custing,devicePRData,
+        		*cusLB,hostPRData.vArraySrc,batchsize);
 #else
-        hostPRData.queue.enqueueFromHost(hostPRData.vArraySrc[0]);
-        hostPRData.queue.enqueueFromHost(hostPRData.vArrayDst[1]);
-        printf("\n--------------- update contri by queue---------------");
-  
+        
+        for(length_t i=0; i<batchsize; i++) {
+        	hostPRData.queue.enqueueFromHost(edgeSrc[i]);
+        }    
+        
         length_t prevEnd=1;
-        while((hostPRData.queue.getActiveQueueSize())>0){
-            allVinA_TraverseEdges_LB<StreamingPageRankOperator::updateContributionsUndirected>(custing,devicePRData,*cusLB,hostPRData.queue,batchsize);
+        
+        SyncDeviceWithHost(); //added for threashold and iteration count
+#if 1       
+        cout << "11111   hostPRData.queue.getActiveQueueSize():" <<hostPRData.queue.getActiveQueueSize()<<endl;
+        cout << "hostPRData.iteration < hostPRData.iterationMax " << hostPRData.iteration << " "<< hostPRData.iterationMax << endl;
+        cout << "h_out>hostPRData.threshhold?" << h_out << " " << hostPRData.threshhold <<endl; 
+        while((hostPRData.queue.getActiveQueueSize())>0 
+        		&& (hostPRData.iteration < hostPRData.iterationMax)
+        		&& (h_out>hostPRData.threshhold)){
+        	cout << "\n" << "****hostPRData.queue.getActiveQueueSize()=" << hostPRData.queue.getActiveQueueSize() << endl;
+        	SyncHostWithDevice();
+        	allVinA_TraverseEdges_LB<StreamingPageRankOperator::updateContributionsUndirected>(custing,devicePRData,
+            		*cusLB,hostPRData.queue,batchsize);
 
-            SyncHostWithDevice();
             hostPRData.queue.setQueueCurr(prevEnd);
     		prevEnd = hostPRData.queue.getQueueEnd();
-    		SyncDeviceWithHost();
+    		
+    		allVinA_TraverseVertices<StreamingPageRankOperator::updateDiffAndCopy>(custing,devicePRData,*cusLB);
+    		allVinG_TraverseVertices<StreamingPageRankOperator::updateSum>(custing,devicePRData);
+    		
+    		//SyncDeviceWithHost();
+    		
+    		copyArrayDeviceToHost(hostPRData.reductionOut,&h_out, 1, sizeof(prType));
+    		hostPRData.iteration++;
+    	    cout << "22222   hostPRData.queue.getActiveQueueSize():" <<hostPRData.queue.getActiveQueueSize()<<endl;
+    	        cout << "hostPRData.iteration < hostPRData.iterationMax " << hostPRData.iteration << " "<< hostPRData.iterationMax << endl;
+    	        cout << "h_out>hostPRData.threshhold?" << h_out << " " << hostPRData.threshhold <<endl; 
+    	    
         }
+        cout << "33333    hostPRData.queue.getActiveQueueSize():" <<hostPRData.queue.getActiveQueueSize()<<endl;
+            cout << "hostPRData.iteration < hostPRData.iterationMax " << hostPRData.iteration << " "<< hostPRData.iterationMax << endl;
+            cout << "h_out>hostPRData.threshhold?" << h_out << " " << hostPRData.threshhold <<endl; 
+        
+#endif        
 #endif
+/*
+ * 	hostPRData.iteration = 0;
+
+	prType h_out = hostPRData.threshhold+1;
+
+	while(hostPRData.iteration < hostPRData.iterationMax && h_out>hostPRData.threshhold){
+		SyncDeviceWithHost();
+
+		allVinA_TraverseVertices<StreamingPageRankOperator::resetCurr>(custing,devicePRData,*cusLB);
+		allVinA_TraverseVertices<StreamingPageRankOperator::computeContribuitionPerVertex>(custing,devicePRData,*cusLB);
+		allVinA_TraverseEdges_LB<StreamingPageRankOperator::addContribuitionsUndirected>(custing,devicePRData,*cusLB);
+		// allVinA_TraverseEdges_LB<StreamingPageRankOperator::addContribuitions>(custing,devicePRData,*cusLB);
+		allVinA_TraverseVertices<StreamingPageRankOperator::dampAndDiffAndCopy>(custing,devicePRData,*cusLB);
+
+		// allVinG_TraverseVertices<StreamingPageRankOperator::resetCurr>(custing,devicePRData);
+		// allVinG_TraverseVertices<StreamingPageRankOperator::computeContribuitionPerVertex>(custing,devicePRData);
+		// allVinA_TraverseEdges_LB<StreamingPageRankOperator::addContribuitionsUndirected>(custing,devicePRData,cusLB);
+		// allVinG_TraverseVertices<StreamingPageRankOperator::dampAndDiffAndCopy>(custing,devicePRData);
+
+		// copyArrayDeviceToDevice(hostPRData.currPR,hostPRData.prevPR, hostPRData.nv,sizeof(prType));
+
+		// allVinG_TraverseVertices<StreamingPageRankOperator::print>(custing,d_out);
+
+		allVinG_TraverseVertices<StreamingPageRankOperator::sum>(custing,devicePRData);
+		SyncHostWithDevice();
+
+		copyArrayDeviceToHost(hostPRData.reductionOut,&h_out, 1, sizeof(prType));
+		// h_out=hostPRData.threshhold+1;
+		// cout << "The number of elements : " << hostPRData.nv << endl;
+
+		hostPRData.iteration++;
+	}
+}
+ */        
+        
 //        while(hostPRData.iteration < hostPRData.iterationMax && h_out>hostPRData.threshhold){
 //                SyncDeviceWithHost();
 //                printf("\n--------------- reset curr---------------");

@@ -129,7 +129,7 @@ static __global__ void device_allVinA_TraverseOneEdge(cuStinger* custing,void* m
 //			printf("\n 55555555555555555555555555");
 			break;
 		}
-//		printf("verSrcArray[%d]=%d, verDstArray[%d]=%d\n",v,verSrcArray[v],v,verDstArray[v]);
+		printf("verSrcArray[%d]=%d, verDstArray[%d]=%d\n",v,verSrcArray[v],v,verDstArray[v]);
 		vertexId_t src = verSrcArray[v];
 		vertexId_t dst = verDstArray[v];
 		(cusSK)(custing,src,dst,metadata);

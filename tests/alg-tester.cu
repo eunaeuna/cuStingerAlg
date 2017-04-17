@@ -344,12 +344,12 @@ int main(const int argc, char *argv[]){
 
 #define SPR_ON 1
 #if SPR_ON //streaming pr
-	        printf("\n <spr>======================================\n");
+	        printf("\n<spr>======================================\n");
 	        upr.UpdateDiff(custing, *buds[0]);
 	        //upr.setInputParameters(50,0.00001);
 	        //upr.Run2(custingTest);
 #else
-	        printf("\n <pr>======================================\n");
+	        printf("\n<pr>======================================\n");
 	        upr.Run(custingTest);
 #endif	        
 	        totalTime = end_clock(ce_start, ce_stop);	        
