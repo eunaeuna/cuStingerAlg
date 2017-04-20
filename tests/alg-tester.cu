@@ -278,7 +278,7 @@ int main(const int argc, char *argv[]){
     cout << "Total time for streaming pagerank       : " << totalTime << endl;
     cout << "Average time per iteartion    : " << totalTime/(float)upr.getIterationCount() << endl;
     upr.printRankings(custing);
-
+#if 1
 	//------------------------
 	// update
 	//------------------------
@@ -347,7 +347,7 @@ int main(const int argc, char *argv[]){
 	        printf("\n<spr>======================================\n");
 	        upr.UpdateDiff(custing, *buds[0]);
 	        //upr.setInputParameters(50,0.00001);
-	        //upr.Run2(custingTest);
+	        upr.Run2(custingTest);
 #else
 	        printf("\n<pr>======================================\n");
 	        upr.Run(custingTest);
@@ -364,7 +364,7 @@ int main(const int argc, char *argv[]){
 #else
 	        upr.printRankings(custingTest);
 #endif		        
-	        
+#endif	        
 	custing.freecuStinger();
 
 	free(off);

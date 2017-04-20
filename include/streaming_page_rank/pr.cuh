@@ -175,35 +175,36 @@ static __device__ void recomputeContributionUndirected(cuStinger* custing, verte
 //src
         length_t sizeDst = custing->dVD->getUsed()[dst];
         prType updateDiff = pr->damp*(pr->prevPR[dst]/(sizeDst+1));
-        printf("\n---damp=%f, (prevPR[%d:dst]:%f)/(n:%d)",pr->damp,dst,(pr->prevPR[dst]),sizeDst+1);
-        updateDiff += pr->prevPR[src]; //new = old + pr_ver_in_new_edge
-        printf("\n---------------(pr->prevPR[%d]:%f)+=(updateDiff=%f)",src,pr->prevPR[src],updateDiff);
-        printf("\n!!----------------------------------(pr->prevPR[%d]=%f), (pr->currPR[%d]=%f)",src,pr->prevPR[src],src,pr->currPR[src]);
+        printf("\n---damp=%f, (prevPR[%d:dst]:%e)/(n:%d)",pr->damp,dst,(pr->prevPR[dst]),sizeDst+1);
+        //updateDiff += pr->prevPR[src]; //new = old + pr_ver_in_new_edge
+        printf("\n---------------(pr->prevPR[%d]:%e)+=(updateDiff=%e)",src,pr->prevPR[src],updateDiff);
+        printf("\n!!----------------------------------(pr->prevPR[%d]=%e), (pr->currPR[%d]=%e)",src,pr->prevPR[src],src,pr->currPR[src]);
         atomicAdd(pr->currPR+src,updateDiff);
         //pr->currPR[src] = pr->prevPR[src] + updateDiff;
-        //pr->prevPR[src]=pr->currPR[src]; //preserve old pr values for propagation
-        printf("\n!!----------------------------------(pr->prevPR[%d]=%f), (pr->currPR[%d]=%f)\n",src,pr->prevPR[src],src,pr->currPR[src]);
+        printf("n!!----------------------------------(pr->prevPR[%d]=%e), (pr->currPR[%d]=%e)\n",src,pr->prevPR[src],src,pr->currPR[src]);
+        //pr->prevPR[src]=pr->currPR[src]; //commented out to preserve old pr values for propagation
 }
 
 static __device__ void updateContributionsUndirected(cuStinger* custing, vertexId_t src, vertexId_t dst, void* metadata){
 	    pageRankUpdate* pr = (pageRankUpdate*)metadata;
         length_t sizeSrc = custing->dVD->getUsed()[src];
 
-//			printf("\n ++pr->prevPR[%d]:%f,pr->currPR[%d]:%f,sizeSrc+1:%d",src,pr->prevPR[src],src,pr->currPR[src],sizeSrc+1);
+			printf("\n ++pr->prevPR[%d]:%e,pr->currPR[%d]:%e,sizeSrc+1:%d",src,pr->prevPR[src],src,pr->currPR[src],sizeSrc+1);
 			
-			prType updateDiff = pr->damp*((pr->currPR[src]/(sizeSrc+1))-(pr->prevPR[src]/sizeSrc));// = pr->damp*((pr->prevPR[dst]/(sizeSrc*sizeDst)) - (pr->prevPR[src]/(sizeSrc*(sizeSrc-1))));
-			updateDiff += pr->prevPR[dst];
-	
+			//prType updateDiff = pr->damp*((pr->currPR[src]/(sizeSrc+1))-(pr->prevPR[src]/sizeSrc));// = pr->damp*((pr->prevPR[dst]/(sizeSrc*sizeDst)) - (pr->prevPR[src]/(sizeSrc*(sizeSrc-1))));
+            prType updateDiff = pr->damp*((pr->currPR[src]/(sizeSrc+1))-(pr->prevPR[src]/sizeSrc));
+			//updateDiff += pr->prevPR[dst];
+			printf("\n ++(propagation:[%d])---------------(pr->prevPR[%d]:%e)+=(updateDiff=%e),size:%d",src,dst,pr->prevPR[dst],updateDiff,sizeSrc+1);
 			atomicAdd(pr->currPR+dst,updateDiff);
 			//pr->currPR[dst] = pr->prevPR[dst] + updateDiff;
 			//pr->prevPR[dst] = pr->currPR[dst]; //do not update prev pr value
-			printf("\n ++(propagation:[%d])---------------(pr->prevPR[%d]:%f)+=(updateDiff=%f),size:%d",src,dst,pr->prevPR[dst],updateDiff,sizeSrc+1);
+			printf("\n ++(propagation:[%d])---------------(pr->currPR[%d]) = %e, size:%d\n",src,dst,pr->currPR[dst],sizeSrc+1);
 
 			length_t sizeDst = custing->dVD->getUsed()[dst];
             if (sizeDst > 0) {
 				pr->queue.enqueue(dst);
 				//printf("\n && enqueue(%d) / %d !!\n",dst,pr->queue.getActiveQueueSize()); //error!
-				printf("\n && enqueue(%d)!!\n",dst);
+				printf("&& enqueue(%d)!!\n",dst);
             }
 }
 

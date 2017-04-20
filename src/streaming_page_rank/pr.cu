@@ -51,6 +51,7 @@ void StreamingPageRank::Init(cuStinger& custing){
 	SyncDeviceWithHost();
 
 	//cusLB = new cusLoadBalance(custing,false,true);
+	//cusLB = new cusLoadBalance(custing.nv); //ERROR!!
 	cusLB = new cusLoadBalance(custing);
 
 
@@ -227,7 +228,9 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
 #endif
         
         hostPRData.iteration = 0;
+        hostPRData.iterationMax = 1; //added
         prType h_out = hostPRData.threshhold+1;
+
 
         printf("\n--------------- recommpute-----------");       
         allVinA_TraverseOneEdge<StreamingPageRankOperator::recomputeContributionUndirected>(custing,devicePRData,
@@ -243,7 +246,7 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
         	hostPRData.queue.enqueueFromHost(edgeSrc[i]);
         }    
         
-        length_t prevEnd=1;
+        length_t prevEnd = batchsize;
         
         SyncDeviceWithHost(); //added for threashold and iteration count
 #if 1       
@@ -254,7 +257,9 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
         		&& (hostPRData.iteration < hostPRData.iterationMax)
         		&& (h_out>hostPRData.threshhold)){
         	cout << "\n" << "****hostPRData.queue.getActiveQueueSize()=" << hostPRData.queue.getActiveQueueSize() << endl;
-        	SyncHostWithDevice();
+            //      SyncHostWithDevice();
+                    SyncDeviceWithHost(); //added
+
         	allVinA_TraverseEdges_LB<StreamingPageRankOperator::updateContributionsUndirected>(custing,devicePRData,
             		*cusLB,hostPRData.queue,batchsize);
 
@@ -264,7 +269,8 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
     		allVinA_TraverseVertices<StreamingPageRankOperator::updateDiffAndCopy>(custing,devicePRData,*cusLB);
     		allVinG_TraverseVertices<StreamingPageRankOperator::updateSum>(custing,devicePRData);
     		
-    		//SyncDeviceWithHost();
+            //SyncDeviceWithHost();
+            SyncHostWithDevice(); //added
     		
     		copyArrayDeviceToHost(hostPRData.reductionOut,&h_out, 1, sizeof(prType));
     		hostPRData.iteration++;
