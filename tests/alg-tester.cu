@@ -278,6 +278,7 @@ int main(const int argc, char *argv[]){
     cout << "Total time for streaming pagerank       : " << totalTime << endl;
     cout << "Average time per iteartion    : " << totalTime/(float)upr.getIterationCount() << endl;
     upr.printRankings(custing);
+    
 #if 1
 	//------------------------
 	// update
