@@ -59,12 +59,14 @@ double getRand(){
 
 void generateEdgeUpdates(length_t nv, length_t numEdges, vertexId_t* edgeSrc, vertexId_t* edgeDst){
         printf("-----------------------------------------------\n");
-        for(int32_t e=0; e<numEdges; e+=2){
-                edgeSrc[e] = 2;//rand()%nv;
-                edgeDst[e] = 3;//rand()%nv;
+        for(int32_t e=0; e<numEdges;e++){
+        	    //2<-->3: astro
+        	    //1<-->7: audi, no propagation
+                edgeSrc[e] = rand()%nv;
+                edgeDst[e++] = rand()%nv;
                 printf("edgeSrc[%d]=%d,\t edgeDst[%d]=%d\n",e,edgeSrc[e],e,edgeDst[e]);
-                edgeSrc[e+1] = 3;//edgeDst[e];
-                edgeDst[e+1] = 2;//edgeSrc[e];
+                edgeSrc[e] = edgeDst[e-1];
+                edgeDst[e] = edgeSrc[e-1];
                 printf("edgeSrc[%d]=%d,\t edgeDst[%d]=%d\n",e+1,edgeSrc[e+1],e+1,edgeDst[e+1]);
         }
 }
@@ -294,7 +296,7 @@ int main(const int argc, char *argv[]){
 
 	        int numBatches = 1;
 	        std::vector<BatchUpdateData*>buds(numBatches);
-	        int numEdges = 1;
+	        int numEdges = 5;
 	        length_t numTotalEdges = numEdges;
 
 	        for(unsigned i=0; i<numBatches; ++i){
@@ -310,7 +312,7 @@ int main(const int argc, char *argv[]){
 	            //  generateEdgeUpdatesRMAT(nv, numEdges, bud.getSrc(),bud.getDst(),a,b,c,d);
 	            }
 	            else{
-	                generateEdgeUpdates(nv, numEdges, bud.getSrc(),bud.getDst());
+	                generateEdgeUpdates(nv, numEdges*2, bud.getSrc(),bud.getDst());
 	            }
 	        }
 
@@ -348,7 +350,7 @@ int main(const int argc, char *argv[]){
 	        printf("\n<spr>======================================\n");
 	        upr.UpdateDiff(custing, *buds[0]);
 	        //upr.setInputParameters(50,0.00001);
-	        upr.Run2(custingTest);
+	        //upr.Run2(custingTest);
 #else
 	        printf("\n<pr>======================================\n");
 	        upr.Run(custingTest);
@@ -358,14 +360,14 @@ int main(const int argc, char *argv[]){
 	        cout << "Total time for updating streaming pagerank       : " << totalTime << endl;
 	        cout << "Average time per iteartion    : " << totalTime/(float)upr.getIterationCount() << endl;
 
-	        //upr.printRankings(custingTest);
-	        
+	        //upr.printRankings(custingTest);	        
 #if SPR_ON //streaming pr	        
 	        upr.printRankings(custingTest);
 #else
 	        upr.printRankings(custingTest);
-#endif		        
-#endif	        
+#endif	
+#endif //end of update   
+
 	custing.freecuStinger();
 
 	free(off);
