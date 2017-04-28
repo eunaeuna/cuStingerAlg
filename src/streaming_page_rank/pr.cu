@@ -38,7 +38,7 @@ void StreamingPageRank::Init(cuStinger& custing){
 
 	devicePRData = (pageRankUpdate*)allocDeviceArray(1, sizeof(pageRankUpdate));
 	hostPRData.queue.Init(custing.nv);
-	hostPRData.visited = (bool*)allocDeviceArray(hostPRData.nv+1, sizeof(bool));
+	hostPRData.visited = (length_t*)allocDeviceArray(hostPRData.nv+1, sizeof(length_t));
 
 	SyncDeviceWithHost();
 
@@ -144,7 +144,7 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
 #endif
      
     hostPRData.iteration = 0;
-    hostPRData.iterationMax = 1; //added for debugging
+    hostPRData.iterationMax = 0; //added for debugging
     prType h_out = hostPRData.threshhold+1;
 
     for(length_t i=0; i<batchsize; i++) {
@@ -166,11 +166,11 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
 #if DEBUG_ON      
     cout << "11111   hostPRData.queue.getActiveQueueSize():" << hostPRData.queue.getActiveQueueSize()<< endl;
     cout << "hostPRData.iteration < hostPRData.iterationMax " << hostPRData.iteration << " "<< hostPRData.iterationMax << endl;
-    cout << "h_out > hostPRData.threshhold?" << h_out << " " << hostPRData.threshhold << endl; 
+    cout << "h_out > hostPRData.threshold?" << h_out << " " << hostPRData.threshhold << endl; 
 #endif
     while((hostPRData.queue.getActiveQueueSize())>0 
-        		//&& (hostPRData.iteration < hostPRData.iterationMax)
-        		//&& (h_out>hostPRData.threshhold)
+        		&& (hostPRData.iteration < hostPRData.iterationMax)
+        		&& (h_out>hostPRData.threshhold)
         		){
        	cout << "\n" << "****hostPRData.queue.getActiveQueueSize()=" << hostPRData.queue.getActiveQueueSize() << endl;
        	//cout << "11111 prevEnd = " << prevEnd << endl;
@@ -180,8 +180,10 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
            		*cusLB,hostPRData.queue,batchsize);
 
       	SyncHostWithDevice();
+#if 0 	//run all vertices in the queue
         hostPRData.queue.setQueueCurr(prevEnd);
         prevEnd = hostPRData.queue.getQueueEnd();
+#endif        
         SyncDeviceWithHost();	
     	//allVinA_TraverseVertices<StreamingPageRankOperator::updateDiffAndCopy>(custing,devicePRData,*cusLB);
     	//allVinG_TraverseVertices<StreamingPageRankOperator::updateSum>(custing,devicePRData);
@@ -269,7 +271,8 @@ void StreamingPageRank::printRankings(cuStinger& custing){
     for (uint64_t v=0; v<hostPRData.nv; v++)
     {
         fprintf(fp_pr,"%d %d %e\n",v,h_ids[v],h_scores[v]);
-    	fprintf(fp_pr2,"%d %d\n",v,h_ids[v]);
+    	//fprintf(fp_pr2,"%d %d\n",v,h_ids[v]);
+    	fprintf(fp_pr2,"%d\n",h_ids[v]);
     }
    fclose(fp_pr);
    fclose(fp_pr2);

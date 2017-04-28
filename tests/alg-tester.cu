@@ -60,14 +60,21 @@ double getRand(){
 void generateEdgeUpdates(length_t nv, length_t numEdges, vertexId_t* edgeSrc, vertexId_t* edgeDst){
         printf("-----------------------------------------------\n");
         for(int32_t e=0; e<numEdges;e++){
-        	    //2<-->3: astro
-        	    //1<-->7: audi, no propagation
+#if 0 //rand        	    
                 edgeSrc[e] = rand()%nv;
                 edgeDst[e++] = rand()%nv;
-                printf("edgeSrc[%d]=%d,\t edgeDst[%d]=%d\n",e,edgeSrc[e],e,edgeDst[e]);
+                printf("edgeSrc[%d]=%d,\t edgeDst[%d]=%d\n",e,edgeSrc[e-1],e-1,edgeDst[e-1]);
                 edgeSrc[e] = edgeDst[e-1];
                 edgeDst[e] = edgeSrc[e-1];
-                printf("edgeSrc[%d]=%d,\t edgeDst[%d]=%d\n",e+1,edgeSrc[e+1],e+1,edgeDst[e+1]);
+                printf("edgeSrc[%d]=%d,\t edgeDst[%d]=%d\n",e,edgeSrc[e+1],e,edgeDst[e]);
+#else
+                edgeSrc[e] = 2;
+                edgeDst[e++] = 3;
+                printf("edgeSrc[%d]=%d,\t edgeDst[%d]=%d\n",e,edgeSrc[e-1],e-1,edgeDst[e-1]);
+                edgeSrc[e] = edgeDst[e-1];
+                edgeDst[e] = edgeSrc[e-1];
+                printf("edgeSrc[%d]=%d,\t edgeDst[%d]=%d\n",e,edgeSrc[e],e,edgeDst[e]);           
+#endif                
         }
 }
 #if 0
@@ -296,7 +303,7 @@ int main(const int argc, char *argv[]){
 
 	        int numBatches = 1;
 	        std::vector<BatchUpdateData*>buds(numBatches);
-	        int numEdges = 5;
+	        int numEdges = 1;
 	        length_t numTotalEdges = numEdges;
 
 	        for(unsigned i=0; i<numBatches; ++i){
@@ -345,7 +352,7 @@ int main(const int argc, char *argv[]){
 
 	        start_clock(ce_start, ce_stop);
 
-#define SPR_ON 1
+#define SPR_ON 0
 #if SPR_ON //streaming pr
 	        printf("\n<spr>======================================\n");
 	        upr.UpdateDiff(custing, *buds[0]);
@@ -353,6 +360,7 @@ int main(const int argc, char *argv[]){
 	        //upr.Run2(custingTest);
 #else
 	        printf("\n<pr>======================================\n");
+	        upr.setInputParameters(1,0.00001);
 	        upr.Run(custingTest);
 #endif	        
 	        totalTime = end_clock(ce_start, ce_stop);	        

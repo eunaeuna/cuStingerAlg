@@ -28,7 +28,7 @@ public:
 	prType normalizedDamp;
 #if 1 //queue	
 	vertexQueue queue;
-	bool *visited;
+	length_t *visited;
 //#else //array
 	vertexId_t* vArraySrc;
 	vertexId_t* vArrayDst;
@@ -140,12 +140,13 @@ static __device__ void sumPr(cuStinger* custing,vertexId_t src, void* metadata){
 #if PR_UPDATE 
 static __device__ void clearVisited(cuStinger* custing,vertexId_t src, void* metadata){
         pageRankUpdate* pr = (pageRankUpdate*)metadata;
-        pr->visited[src]=false;
+        pr->visited[src] = 0;
 }
 
 static __device__ void markVisited(cuStinger* custing,vertexId_t src, void* metadata){
         pageRankUpdate* pr = (pageRankUpdate*)metadata;
-        pr->visited[src]=true;
+        //pr->visited[src]++;
+        atomicAdd(pr->visited+src,1);
 }
 
 static __device__ void recomputeContributionUndirected(cuStinger* custing, vertexId_t src, vertexId_t dst, void* metadata){
@@ -167,21 +168,35 @@ static __device__ void updateContributionsUndirected(cuStinger* custing, vertexI
 //			printf("\n ++pr->prevPR[%d]:%e,pr->currPR[%d]:%e,sizeSrc+1:%d",src,pr->prevPR[src],src,pr->currPR[src],sizeSrc+1);
             prType updateDiff = pr->damp*((pr->currPR[src]/(sizeSrc+1))-(pr->prevPR[src]/sizeSrc));
 //			printf("\n ++(propagation:[%d])---------------(pr->prevPR[%d]:%e)+=(updateDiff=%e),size:%d",src,dst,pr->prevPR[dst],updateDiff,sizeSrc+1);
-            float diffThreashold = 0.00000001;
-//            printf("\n fabs(updateDiff) = %e, threashold = %e\n",fabs(updateDiff), diffThreashold);
-//            if (fabs(updateDiff) < diffThreashold) return;
-            
+#if 0 //setting pr threshold for update
+            float diffThreshold = 0.00000001;
+//            printf("\n fabs(updateDiff) = %e, threshold = %e\n",fabs(updateDiff), diffThreshold);
+//            if (fabs(updateDiff) < diffThreshold) return;
+#endif            
             atomicAdd(pr->currPR+dst,updateDiff);
 			//pr->prevPR[dst] = pr->currPR[dst]; //do not update prev pr value
 //			printf("\n ++(propagation:[%d])---------------(pr->currPR[%d]) = %e, size:%d\n",src,dst,pr->currPR[dst],sizeSrc+1);
 
 			length_t sizeDst = custing->dVD->getUsed()[dst];
-            //if (sizeDst > 0) {
+
 			
-	        if ((sizeDst > 0) && (pr->visited[dst] == false)) {
-				pr->queue.enqueue(dst);
-				pr->visited[dst] = true;
-//				printf("&& enqueue(%d)!!\n",dst);
+	        if ((sizeDst > 0) && (pr->visited[dst] == 0)) {
+#if 0 //race condition
+	        	pr->visited[dst]++;
+	        	pr->queue.enqueue(dst);
+				printf("&& enqueue(%d)!!\n",dst);
+#else
+	        	//CAS: old == compare ? val : old
+	        	length_t temp = pr->visited[dst] + 1;
+	        	length_t old = atomicCAS(pr->visited+dst,0,temp);
+	        	//vertexId_t prevVal = atomicCAS(bd->level+src__,INT32_MAX,bd->currLevel+1);
+	        	//if (prevVal==INT32_MAX)
+			    //    atomicAdd(&bd->verticesFound,1);
+	        	if (old == 0) {
+	        		pr->queue.enqueue(dst);
+//	        		printf("&& enqueue(%d)!!\n",dst);
+	        	}
+#endif	        	
             }
 }
 
