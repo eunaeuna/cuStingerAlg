@@ -38,7 +38,9 @@ void StreamingPageRank::Init(cuStinger& custing){
 
 	devicePRData = (pageRankUpdate*)allocDeviceArray(1, sizeof(pageRankUpdate));
 	hostPRData.queue.Init(custing.nv);
+	hostPRData.queueDlt.Init(custing.nv);
 	hostPRData.visited = (length_t*)allocDeviceArray(hostPRData.nv+1, sizeof(length_t));
+	hostPRData.delta = (prType*) allocDeviceArray(hostPRData.nv+1, sizeof(prType));
 
 	SyncDeviceWithHost();
 
@@ -51,6 +53,7 @@ void StreamingPageRank::Init(cuStinger& custing){
 void StreamingPageRank::Reset(){
 	hostPRData.iteration = 0;
 	hostPRData.queue.resetQueue();
+	hostPRData.queueDlt.resetQueue();
 	SyncDeviceWithHost();
 }
 
@@ -67,7 +70,9 @@ void StreamingPageRank::Release(){
 	
     //queue
     //hostPRData.queue.Release();
+    //hostPRData.queueDlt.Release();
     freeDeviceArray(hostPRData.visited);
+    freeDeviceArray(hostPRData.delta);
 }
 
 void StreamingPageRank::Run(cuStinger& custing){
@@ -144,14 +149,15 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
 #endif
      
     hostPRData.iteration = 0;
-    hostPRData.iterationMax = 0; //added for debugging
+    hostPRData.iterationMax = 2; //added for debugging
+    hostPRData.epsilon = 0.00000001; // whether enqueue or not
     prType h_out = hostPRData.threshhold+1;
 
     for(length_t i=0; i<batchsize; i++) {
       	hostPRData.queue.enqueueFromHost(edgeSrc[i]);
     }    
         
-    length_t prevEnd = batchsize;
+    //length_t prevEnd = batchsize;
 
     SyncDeviceWithHost(); //added for threashold and iteration count
     allVinA_TraverseVertices<StreamingPageRankOperator::clearVisited>(custing,devicePRData,*cusLB); //added
@@ -173,24 +179,25 @@ void StreamingPageRank::UpdateDiff(cuStinger& custing, BatchUpdateData& bud) {
         		&& (h_out>hostPRData.threshhold)
         		){
        	cout << "\n" << "****hostPRData.queue.getActiveQueueSize()=" << hostPRData.queue.getActiveQueueSize() << endl;
-       	//cout << "11111 prevEnd = " << prevEnd << endl;
        	SyncDeviceWithHost();
 
+	    hostPRData.queueDlt.resetQueue();
       	allVinA_TraverseEdges_LB<StreamingPageRankOperator::updateContributionsUndirected>(custing,devicePRData,
            		*cusLB,hostPRData.queue,batchsize);
-
+      	//hostPRData.queueDlt.getQueueAtCurr();
+      	allVinA_TraverseVertices<StreamingPageRankOperator::updateContributionsUndirected2>(custing,devicePRData,
+           	    hostPRData.queueDlt,batchsize);
+#if 0
       	SyncHostWithDevice();
-#if 0 	//run all vertices in the queue
+ 	//run all vertices in the queue
         hostPRData.queue.setQueueCurr(prevEnd);
-        prevEnd = hostPRData.queue.getQueueEnd();
-#endif        
+        prevEnd = hostPRData.queue.getQueueEnd();     
         SyncDeviceWithHost();	
-    	//allVinA_TraverseVertices<StreamingPageRankOperator::updateDiffAndCopy>(custing,devicePRData,*cusLB);
-    	//allVinG_TraverseVertices<StreamingPageRankOperator::updateSum>(custing,devicePRData);
+#endif 
+    	allVinA_TraverseVertices<StreamingPageRankOperator::updateDiffAndCopy>(custing,devicePRData,*cusLB);
+    	allVinG_TraverseVertices<StreamingPageRankOperator::updateSum>(custing,devicePRData);
     		
-//        cout << "22222 prevEnd = " << prevEnd << endl;
         SyncHostWithDevice();
-//        cout << "33333 prevEnd = " << prevEnd << endl;
         
     	copyArrayDeviceToHost(hostPRData.reductionOut,&h_out, 1, sizeof(prType));
     	hostPRData.iteration++;

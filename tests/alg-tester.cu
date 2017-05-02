@@ -352,10 +352,11 @@ int main(const int argc, char *argv[]){
 
 	        start_clock(ce_start, ce_stop);
 
-#define SPR_ON 0
+#define SPR_ON 1
 #if SPR_ON //streaming pr
 	        printf("\n<spr>======================================\n");
-	        upr.UpdateDiff(custing, *buds[0]);
+	        //upr.UpdateDiff(custing, *buds[0]);
+	        upr.UpdateDiff(custingTest, *buds[0]);
 	        //upr.setInputParameters(50,0.00001);
 	        //upr.Run2(custingTest);
 #else

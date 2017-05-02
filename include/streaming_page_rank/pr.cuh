@@ -27,8 +27,11 @@ public:
 	prType damp;
 	prType normalizedDamp;
 #if 1 //queue	
+	prType epsilon; //determinant for enqueuing 
 	vertexQueue queue;
+	vertexQueue queueDlt; //delta queue
 	length_t *visited;
+    prType* delta;
 //#else //array
 	vertexId_t* vArraySrc;
 	vertexId_t* vArrayDst;
@@ -153,7 +156,11 @@ static __device__ void recomputeContributionUndirected(cuStinger* custing, verte
         pageRankUpdate* pr = (pageRankUpdate*)metadata;
 //src
         length_t sizeDst = custing->dVD->getUsed()[dst];
+#if 0
         prType updateDiff = pr->damp*(pr->prevPR[dst]/(sizeDst+1));
+#else  //custingTest
+        prType updateDiff = pr->damp*(pr->prevPR[dst]/(sizeDst));
+#endif
 //        printf("\n---damp=%f, (prevPR[%d:dst]:%e)/(n:%d)",pr->damp,dst,(pr->prevPR[dst]),sizeDst+1);
 //        printf("\n---------------(pr->prevPR[%d]:%e)+=(updateDiff=%e)",src,pr->prevPR[src],updateDiff);
 //        printf("\n!!----------------------------------(pr->prevPR[%d]=%e), (pr->currPR[%d]=%e)",src,pr->prevPR[src],src,pr->currPR[src]);
@@ -166,12 +173,21 @@ static __device__ void updateContributionsUndirected(cuStinger* custing, vertexI
         length_t sizeSrc = custing->dVD->getUsed()[src];
 
 //			printf("\n ++pr->prevPR[%d]:%e,pr->currPR[%d]:%e,sizeSrc+1:%d",src,pr->prevPR[src],src,pr->currPR[src],sizeSrc+1);
+#if 1
             prType updateDiff = pr->damp*((pr->currPR[src]/(sizeSrc+1))-(pr->prevPR[src]/sizeSrc));
+#else //custingTest
+            prType updateDiff = pr->damp*((pr->currPR[src]/(sizeSrc))-(pr->prevPR[src]/(sizeSrc-1)));
+#endif            
 //			printf("\n ++(propagation:[%d])---------------(pr->prevPR[%d]:%e)+=(updateDiff=%e),size:%d",src,dst,pr->prevPR[dst],updateDiff,sizeSrc+1);
-#if 0 //setting pr threshold for update
-            float diffThreshold = 0.00000001;
-//            printf("\n fabs(updateDiff) = %e, threshold = %e\n",fabs(updateDiff), diffThreshold);
-//            if (fabs(updateDiff) < diffThreshold) return;
+#if 1 //setting pr epsilon for update
+//            printf("\n fabs(updateDiff) = %e, epsilon = %e\n",fabs(updateDiff), pr->epsilon);
+            if (fabs(updateDiff) < pr->epsilon) {
+            	pr->queueDlt.enqueue(src);
+                atomicAdd(pr->delta+src,updateDiff);
+        		printf("&& DeltaQ: enqueue(%d)!!\n",src);            	
+                printf("++return!!\n");
+            	return;
+            }
 #endif            
             atomicAdd(pr->currPR+dst,updateDiff);
 			//pr->prevPR[dst] = pr->currPR[dst]; //do not update prev pr value
@@ -181,30 +197,41 @@ static __device__ void updateContributionsUndirected(cuStinger* custing, vertexI
 
 			
 	        if ((sizeDst > 0) && (pr->visited[dst] == 0)) {
-#if 0 //race condition
+#if 0 
 	        	pr->visited[dst]++;
 	        	pr->queue.enqueue(dst);
 				printf("&& enqueue(%d)!!\n",dst);
-#else
+#else //prevent the race condition
 	        	//CAS: old == compare ? val : old
 	        	length_t temp = pr->visited[dst] + 1;
 	        	length_t old = atomicCAS(pr->visited+dst,0,temp);
-	        	//vertexId_t prevVal = atomicCAS(bd->level+src__,INT32_MAX,bd->currLevel+1);
-	        	//if (prevVal==INT32_MAX)
-			    //    atomicAdd(&bd->verticesFound,1);
 	        	if (old == 0) {
 	        		pr->queue.enqueue(dst);
-//	        		printf("&& enqueue(%d)!!\n",dst);
+	        		printf("&& enqueue(%d)!!\n",dst);
 	        	}
 #endif	        	
             }
+}
+
+static __device__ void updateContributionsUndirected2(cuStinger* custing, vertexId_t src, void* metadata){
+	    pageRankUpdate* pr = (pageRankUpdate*)metadata;
+        
+        if(pr->delta[src] > pr->epsilon)
+        {
+        		length_t temp = pr->visited[src] + 1;
+	        	length_t old = atomicCAS(pr->visited+src,0,temp);
+	        	if (old == 0) {
+	        		pr->queue.enqueue(src);
+	        		printf("&& enqueue(%d)!!\n",src);
+	        	}
+        }
 }
 
 static __device__ void updateDiffAndCopy(cuStinger* custing,vertexId_t src, void* metadata){
 	pageRankUpdate* pr = (pageRankUpdate*)metadata;
 	//pr->currPR[src]=pr->normalizedDamp+pr->damp*pr->currPR[src];
 
-	pr->absDiff[src]= fabsf(pr->currPR[src]-pr->prevPR[src]);
+	pr->absDiff[src]= fabsf(pr->currPR[src]-pr->prevPR[src]); //adsDiff --> delta[nv]
 	pr->prevPR[src]=pr->currPR[src];
 }
 
